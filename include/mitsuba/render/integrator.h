@@ -23,6 +23,7 @@
 #include <mitsuba/core/netobject.h>
 #include <mitsuba/core/properties.h>
 #include <mitsuba/render/shape.h>
+#include <mitsuba/render/RenderLogger.h>
 
 MTS_NAMESPACE_BEGIN
 
@@ -320,6 +321,15 @@ public:
 	 */
 	virtual Spectrum Li(const RayDifferential &ray,
 		RadianceQueryRecord &rRec) const = 0;
+
+	/**
+	 * \brief Same as above, but here an additional logging interface
+	 * is provided, which integrators can implement to allow tracking
+	 * of rendering data. The default implementation falls back to Li.
+	 */
+	virtual Spectrum Li(const RayDifferential &ray,
+		RadianceQueryRecord &rRec,
+		RenderLogger* logger ) const;
 
 	/**
 	 * \brief Estimate the irradiance at a given surface point

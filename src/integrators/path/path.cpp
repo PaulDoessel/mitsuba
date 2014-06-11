@@ -17,6 +17,7 @@
 */
 
 #include <mitsuba/render/scene.h>
+#include <mitsuba/render/RenderLogger.h>
 #include <mitsuba/core/statistics.h>
 
 MTS_NAMESPACE_BEGIN
@@ -116,7 +117,14 @@ public:
 	MIPathTracer(Stream *stream, InstanceManager *manager)
 		: MonteCarloIntegrator(stream, manager) { }
 
-	Spectrum Li(const RayDifferential &r, RadianceQueryRecord &rRec) const {
+	virtual Spectrum Li(const RayDifferential &ray,
+		RadianceQueryRecord &rRec ) const
+	{
+		return Li(ray, rRec, 0);
+	}
+
+	Spectrum Li(const RayDifferential &r, RadianceQueryRecord &rRec, RenderLogger* logger) const
+	{
 		/* Some aliases and local variables */
 		const Scene *scene = rRec.scene;
 		Intersection &its = rRec.its;
@@ -124,15 +132,19 @@ public:
 		Spectrum Li(0.0f);
 		bool scattered = false;
 
+		if(logger)
+			logger->newPath(ray);
+
 		/* Perform the first ray intersection (or ignore if the
 		   intersection has already been provided). */
 		rRec.rayIntersect(ray);
 		ray.mint = Epsilon;
 
-		Spectrum throughput(1.0f);
+		Spectrum throughput(1.0f); // this is throughput over pdf
 		Float eta = 1.0f;
 
 		while (rRec.depth <= m_maxDepth || m_maxDepth < 0) {
+			//std::cout << "test1\n";
 			if (!its.isValid()) {
 				/* If no intersection could be found, potentially return
 				   radiance from a environment luminaire if it exists */
@@ -140,6 +152,13 @@ public:
 					&& (!m_hideEmitters || scattered))
 					Li += throughput * scene->evalEnvironment(ray);
 				break;
+			}
+			
+			if(logger)
+			{
+				logger->pathEvent( its.p );
+				logger->pathEventSurfaceNormal(its.shFrame.n);
+				logger->pathEventMesh( its.shape );
 			}
 
 			const BSDF *bsdf = its.getBSDF(ray);
@@ -149,9 +168,11 @@ public:
 				&& (!m_hideEmitters || scattered))
 				Li += throughput * its.Le(-ray.d);
 
+
 			/* Include radiance from a subsurface scattering model if requested */
 			if (its.hasSubsurface() && (rRec.type & RadianceQueryRecord::ESubsurfaceRadiance))
 				Li += throughput * its.LoSub(scene, rRec.sampler, -ray.d, rRec.depth);
+
 
 			if ((rRec.depth >= m_maxDepth && m_maxDepth > 0)
 				|| (m_strictNormals && dot(ray.d, its.geoFrame.n)
@@ -164,13 +185,14 @@ public:
 				break;
 			}
 
+
 			/* ==================================================================== */
 			/*                     Direct illumination sampling                     */
 			/* ==================================================================== */
 
 			/* Estimate the direct illumination if this is requested */
 			DirectSamplingRecord dRec(its);
-
+			//std::cout << "test6\n";
 			if (rRec.type & RadianceQueryRecord::EDirectSurfaceRadiance &&
 				(bsdf->getType() & BSDF::ESmooth)) {
 				Spectrum value = scene->sampleEmitterDirect(dRec, rRec.nextSample2D());
@@ -194,10 +216,15 @@ public:
 
 						/* Weight using the power heuristic */
 						Float weight = miWeight(dRec.pdf, bsdfPdf);
-						Li += throughput * value * bsdfVal * weight;
+						Spectrum lightSample = value * bsdfVal * weight;
+						Li += throughput * lightSample;
+
+						if(logger)
+							logger->pathEventLightSample( lightSample, dRec.d, dRec.pdf );
 					}
 				}
 			}
+
 
 			/* ==================================================================== */
 			/*                            BSDF sampling                             */
@@ -209,6 +236,11 @@ public:
 			Spectrum bsdfWeight = bsdf->sample(bRec, bsdfPdf, rRec.nextSample2D());
 			if (bsdfWeight.isZero())
 				break;
+
+			if(logger)
+			{
+				logger->pathEventBSDF( bsdfWeight*bsdfPdf, bsdfPdf, bRec.sampledType );
+			}
 
 			scattered |= bRec.sampledType != BSDF::ENull;
 
@@ -260,7 +292,11 @@ public:
 				   implemented direct illumination sampling technique */
 				const Float lumPdf = (!(bRec.sampledType & BSDF::EDelta)) ?
 					scene->pdfEmitterDirect(dRec) : 0;
-				Li += throughput * value * miWeight(bsdfPdf, lumPdf);
+				Spectrum bsdfSample = throughput * value * miWeight(bsdfPdf, lumPdf);
+				Li += bsdfSample;
+
+				if(logger)
+					logger->pathEventBSDFSample( bsdfSample );
 			}
 
 			/* ==================================================================== */
@@ -285,6 +321,9 @@ public:
 				throughput /= q;
 			}
 		}
+
+		if(logger)
+			logger->finalizePath();
 
 		/* Store statistics */
 		avgPathLength.incrementBase();

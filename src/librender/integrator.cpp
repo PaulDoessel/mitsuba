@@ -52,6 +52,11 @@ void SamplingIntegrator::serialize(Stream *stream, InstanceManager *manager) con
 	Integrator::serialize(stream, manager);
 }
 
+Spectrum SamplingIntegrator::Li(const RayDifferential &ray, RadianceQueryRecord &rRec, RenderLogger* logger ) const
+{
+	return Li(ray, rRec);
+}
+
 Spectrum SamplingIntegrator::E(const Scene *scene, const Intersection &its,
 		const Medium *medium, Sampler *sampler, int nSamples, bool handleIndirect) const {
 	Spectrum E(0.0f);

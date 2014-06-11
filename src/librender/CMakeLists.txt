@@ -48,6 +48,7 @@ set(HDRS
   ${INCLUDE_DIR}/util.h
   ${INCLUDE_DIR}/volume.h
   ${INCLUDE_DIR}/vpl.h
+  ${INCLUDE_DIR}/RenderLogger.h
 )
 
 set(SRCS

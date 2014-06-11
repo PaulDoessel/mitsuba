@@ -96,8 +96,9 @@ inline const PhaseFunction *MediumSamplingRecord::getPhaseFunction() const {
 	return medium->getPhaseFunction();
 }
 
+
 inline bool RadianceQueryRecord::rayIntersect(const RayDifferential &ray) {
-	/* Only search for an intersection if this was explicitly requested */
+	// Only search for an intersection if this was explicitly requested
 	if (type & EIntersection) {
 		scene->rayIntersect(ray, its);
 		if (type & EOpacity) {
