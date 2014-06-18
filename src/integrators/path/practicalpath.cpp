@@ -34,7 +34,7 @@ public:
 		m_lightSamples = props.getInteger("lightsamples", 1);
 		m_diffuseSamples = props.getInteger("diffusesamples", 1);
 		m_glossySamples = props.getInteger("glossysamples", 1);
-		m_directLight = props.getBoolean("directlight", true);
+		m_refractionSamples = props.getInteger("refractionsamples", 1);
 		
 	}
 
@@ -115,8 +115,6 @@ public:
 		// ====================================================================
 		// Estimate the direct illumination if this is requested
 		DirectSamplingRecord dRec(its);
-		if(m_directLight)
-		{
 		if (rRec.type & RadianceQueryRecord::EDirectSurfaceRadiance &&
 			(bsdf->getType() & BSDF::ESmooth))
 		{
@@ -220,14 +218,13 @@ public:
 				}
 			}
 		} // bsdf samples
-		} // direct light
 
 		// ====================================================================
 		//                         Indirect illumination                       
 		// ====================================================================
 
 		///*
-		// indirect diffuse -------
+		// indirect diffuse reflection-------
 		if(its.shape->getBSDF()->getType() & BSDF::EDiffuse)
 		{
 			// Sample BSDF * cos(theta)
@@ -252,9 +249,9 @@ public:
 				Spectrum indirectDiffuseSample = throughput * bsdfWeight * Li_path(indirectDiffuseRay, indirectDiffuseRec, 0);
 				Li += indirectDiffuseSample/float(numSamples);
 			}
-		} // indirect diffuse
-		// indirect glossy -------
-		if(its.shape->getBSDF()->getType() & BSDF::EGlossy)
+		}
+		// indirect glossy reflection  -------
+		if(its.shape->getBSDF()->getType() & BSDF::EGlossyReflection)
 		{
 			// Sample BSDF * cos(theta)
 			int numSamples = rRec.depth == 1 ? m_glossySamples : 1;
@@ -265,7 +262,7 @@ public:
 				//std::cout << "indirect diffuse sample\n"; std::flush(std::cout);
 				Float bsdfPdf;
 				BSDFSamplingRecord bRec(glossy_its, rRec.sampler, ERadiance);
-				bRec.typeMask = BSDF::EGlossy;
+				bRec.typeMask = BSDF::EGlossyReflection;
 				Spectrum bsdfWeight = bsdf->sample(bRec, bsdfPdf, rRec.nextSample2D());
 				if (bsdfWeight.isZero())
 					continue;
@@ -273,12 +270,39 @@ public:
 				indirectGlossyRec.recursiveQuery(rRec, RadianceQueryRecord::ERadianceNoEmission);
 
 				const Vector wo = glossy_its.toWorld(bRec.wo);
-				RayDifferential indirectDiffuseRay(glossy_its.p, wo, ray.time);
+				RayDifferential indirectGlossyRay(glossy_its.p, wo, ray.time);
 
-				Spectrum indirectDiffuseSample = throughput * bsdfWeight * Li_path(indirectDiffuseRay, indirectGlossyRec, 0);
-				Li += indirectDiffuseSample/float(numSamples);
+				Spectrum indirectGlossySample = throughput * bsdfWeight * Li_path(indirectGlossyRay, indirectGlossyRec, 0);
+				Li += indirectGlossySample/float(numSamples);
 			}
-		} // indirect diffuse
+		}
+		// indirect glossy refraction  -------
+		if(its.shape->getBSDF()->getType() & BSDF::EGlossyTransmission)
+		{
+			// Sample BSDF * cos(theta)
+			int numSamples = rRec.depth == 1 ? m_refractionSamples : 1;
+			RadianceQueryRecord indirectGlossyRec;
+			for(int i=0;i<numSamples;++i)
+			{
+				Intersection glossy_its = its;
+				//std::cout << "indirect diffuse sample\n"; std::flush(std::cout);
+				Float bsdfPdf;
+				BSDFSamplingRecord bRec(glossy_its, rRec.sampler, ERadiance);
+				bRec.typeMask = BSDF::EGlossyTransmission;
+				Spectrum bsdfWeight = bsdf->sample(bRec, bsdfPdf, rRec.nextSample2D());
+				if (bsdfWeight.isZero())
+					continue;
+
+				indirectGlossyRec.recursiveQuery(rRec, RadianceQueryRecord::ERadianceNoEmission);
+
+				const Vector wo = glossy_its.toWorld(bRec.wo);
+				RayDifferential indirectGlossyRay(glossy_its.p, wo, ray.time);
+
+				Spectrum indirectGlossySample = throughput * bsdfWeight * Li_path(indirectGlossyRay, indirectGlossyRec, 0);
+				Li += indirectGlossySample/float(numSamples);
+			}
+		}
+
 		//*/
 
 		if(logger)
@@ -519,6 +543,7 @@ public:
 	int m_lightSamples;
 	int m_diffuseSamples;
 	int m_glossySamples;
+	int m_refractionSamples;
 	bool m_directLight;
 
 	MTS_DECLARE_CLASS()

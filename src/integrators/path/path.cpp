@@ -140,8 +140,8 @@ public:
 
 		if(logger)
 		{
-		std::cout <<"ray.o: " << ray.o.x << " " << ray.o.y << " " << ray.o.z << std::endl;
-		std::cout <<"ray.d: " << ray.d.x << " " << ray.d.y << " " << ray.d.z << std::endl;
+		//std::cout <<"ray.o: " << ray.o.x << " " << ray.o.y << " " << ray.o.z << std::endl;
+		//std::cout <<"ray.d: " << ray.d.x << " " << ray.d.y << " " << ray.d.z << std::endl;
 		}
 		rRec.rayIntersect(ray);
 		ray.mint = Epsilon;
@@ -150,11 +150,11 @@ public:
 		Float eta = 1.0f;
 
 		while (rRec.depth <= m_maxDepth || m_maxDepth < 0) {
-			if(logger)
-				std::cout << "test1\n";
+			//if(logger)
+			//	std::cout << "test1\n";
 			if (!its.isValid()) {
-				if(logger)
-					std::cout << "invalid intersection\n";
+				//if(logger)
+				//	std::cout << "invalid intersection\n";
 				/* If no intersection could be found, potentially return
 				   radiance from a environment luminaire if it exists */
 				if ((rRec.type & RadianceQueryRecord::EEmittedRadiance)
@@ -164,8 +164,8 @@ public:
 			}
 			if(logger)
 			{
-				std::cout << "its.p: " << its.p.x << " " << its.p.y << " " << its.p.z << std::endl;
-				std::cout << "its.shFrame.n: " << its.shFrame.n.x << " " << its.shFrame.n.y << " " << its.shFrame.n.z << std::endl;
+				//std::cout << "its.p: " << its.p.x << " " << its.p.y << " " << its.p.z << std::endl;
+				//std::cout << "its.shFrame.n: " << its.shFrame.n.x << " " << its.shFrame.n.y << " " << its.shFrame.n.z << std::endl;
 			}
 			
 			if(logger)
@@ -198,8 +198,8 @@ public:
 				   1. The current path length is below the specifed maximum
 				   2. If 'strictNormals'=true, when the geometric and shading
 				      normals classify the incident direction to the same side */
-				if(logger)
-					std::cout << "break1\n";
+				//if(logger)
+				//	std::cout << "break1\n";
 				break;
 			}
 
@@ -241,7 +241,7 @@ public:
 
 						if(logger)
 						{
-							std::cout << "light sample\n";
+							//std::cout << "light sample\n";
 							logger->pathEventLightSample( lightSample, dRec.d, dRec.pdf );
 						}
 					}
@@ -321,7 +321,7 @@ public:
 
 				if(logger)
 				{
-					std::cout << "bsdf sample\n";
+					//std::cout << "bsdf sample\n";
 					logger->pathEventBSDFSample( bsdfSample );
 				}
 			}
