@@ -137,6 +137,12 @@ public:
 
 		/* Perform the first ray intersection (or ignore if the
 		   intersection has already been provided). */
+
+		if(logger)
+		{
+		std::cout <<"ray.o: " << ray.o.x << " " << ray.o.y << " " << ray.o.z << std::endl;
+		std::cout <<"ray.d: " << ray.d.x << " " << ray.d.y << " " << ray.d.z << std::endl;
+		}
 		rRec.rayIntersect(ray);
 		ray.mint = Epsilon;
 
@@ -144,14 +150,22 @@ public:
 		Float eta = 1.0f;
 
 		while (rRec.depth <= m_maxDepth || m_maxDepth < 0) {
-			//std::cout << "test1\n";
+			if(logger)
+				std::cout << "test1\n";
 			if (!its.isValid()) {
+				if(logger)
+					std::cout << "invalid intersection\n";
 				/* If no intersection could be found, potentially return
 				   radiance from a environment luminaire if it exists */
 				if ((rRec.type & RadianceQueryRecord::EEmittedRadiance)
 					&& (!m_hideEmitters || scattered))
 					Li += throughput * scene->evalEnvironment(ray);
 				break;
+			}
+			if(logger)
+			{
+				std::cout << "its.p: " << its.p.x << " " << its.p.y << " " << its.p.z << std::endl;
+				std::cout << "its.shFrame.n: " << its.shFrame.n.x << " " << its.shFrame.n.y << " " << its.shFrame.n.z << std::endl;
 			}
 			
 			if(logger)
@@ -166,11 +180,13 @@ public:
 			/* Possibly include emitted radiance if requested */
 			if (its.isEmitter() && (rRec.type & RadianceQueryRecord::EEmittedRadiance)
 				&& (!m_hideEmitters || scattered))
+				//if(rRec.depth>1)
 				Li += throughput * its.Le(-ray.d);
 
 
 			/* Include radiance from a subsurface scattering model if requested */
 			if (its.hasSubsurface() && (rRec.type & RadianceQueryRecord::ESubsurfaceRadiance))
+				//if(rRec.depth>1)
 				Li += throughput * its.LoSub(scene, rRec.sampler, -ray.d, rRec.depth);
 
 
@@ -182,6 +198,8 @@ public:
 				   1. The current path length is below the specifed maximum
 				   2. If 'strictNormals'=true, when the geometric and shading
 				      normals classify the incident direction to the same side */
+				if(logger)
+					std::cout << "break1\n";
 				break;
 			}
 
@@ -196,7 +214,8 @@ public:
 			if (rRec.type & RadianceQueryRecord::EDirectSurfaceRadiance &&
 				(bsdf->getType() & BSDF::ESmooth)) {
 				Spectrum value = scene->sampleEmitterDirect(dRec, rRec.nextSample2D());
-				if (!value.isZero()) {
+				if (!value.isZero())
+				{
 					const Emitter *emitter = static_cast<const Emitter *>(dRec.object);
 
 					/* Allocate a record for querying the BSDF */
@@ -217,10 +236,14 @@ public:
 						/* Weight using the power heuristic */
 						Float weight = miWeight(dRec.pdf, bsdfPdf);
 						Spectrum lightSample = value * bsdfVal * weight;
+						//if(rRec.depth>1)
 						Li += throughput * lightSample;
 
 						if(logger)
+						{
+							std::cout << "light sample\n";
 							logger->pathEventLightSample( lightSample, dRec.d, dRec.pdf );
+						}
 					}
 				}
 			}
@@ -293,10 +316,14 @@ public:
 				const Float lumPdf = (!(bRec.sampledType & BSDF::EDelta)) ?
 					scene->pdfEmitterDirect(dRec) : 0;
 				Spectrum bsdfSample = throughput * value * miWeight(bsdfPdf, lumPdf);
+				//if(rRec.depth>1)
 				Li += bsdfSample;
 
 				if(logger)
+				{
+					std::cout << "bsdf sample\n";
 					logger->pathEventBSDFSample( bsdfSample );
+				}
 			}
 
 			/* ==================================================================== */

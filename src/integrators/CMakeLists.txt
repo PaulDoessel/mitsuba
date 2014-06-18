@@ -16,6 +16,7 @@ add_integrator(direct   direct/direct.cpp)
 add_integrator(path     path/path.cpp)
 add_integrator(volpath  path/volpath.cpp)
 add_integrator(volpath_simple path/volpath_simple.cpp)
+add_integrator(practicalpath path/practicalpath.cpp)
 add_integrator(ptracer  ptracer/ptracer.cpp
                         ptracer/ptracer_proc.h ptracer/ptracer_proc.cpp)
 
