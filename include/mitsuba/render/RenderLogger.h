@@ -22,11 +22,12 @@ public:
 	virtual void newSample()=0;
 	virtual void newPath(const RayDifferential& ray)=0;
 	virtual void pathEvent( const Point3& p )=0;
+	virtual void pathEventIntersection( const Intersection& its )=0;
 	virtual void pathEventSurfaceNormal( const Normal& normal )=0;
 	virtual void pathEventMesh( const Shape* shape )=0;
 	virtual void pathEventLightSample( Spectrum sample, Vector3 direction, float pdf )=0;
 	virtual void pathEventBSDFSample( Spectrum sample )=0;
-	virtual void pathEventBSDF( Spectrum bsdf, float pdf, int sampledTypeMask )=0;
+	virtual void pathEventBSDF( Spectrum bsdf, Vector3 direction, float pdf, int sampledTypeMask )=0;
 	virtual void finalizePath()=0;
 	virtual void finalizeSample()=0;
 };

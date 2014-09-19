@@ -20,26 +20,170 @@
 #include <mitsuba/render/RenderLogger.h>
 #include <mitsuba/core/statistics.h>
 
+#include <boost/algorithm/string.hpp>
+#include <boost/lexical_cast.hpp>
+
+
 namespace mitsuba
 {
 
 static StatsCounter avgPathLength("Path tracer", "Average path length", EAverage);
 
-class PracticalMIPathTracer : public MonteCarloIntegrator
+class DistrMIPathTracer : public MonteCarloIntegrator
 {
 public:
-	PracticalMIPathTracer(const Properties &props)
-		: MonteCarloIntegrator(props)
+
+
+	struct SampleCount
 	{
-		m_lightSamples = props.getInteger("lightsamples", 1);
-		m_diffuseSamples = props.getInteger("diffusesamples", 1);
-		m_glossySamples = props.getInteger("glossysamples", 1);
-		m_refractionSamples = props.getInteger("refractionsamples", 1);
+		SampleCount():
+			nextDiffuse(0),
+			nextGlossy(0),
+			nextRefraction(0)
+		{
+		}
+
+
+		SampleCount* getCreateNextDiffuse()
+		{
+			if(!nextDiffuse)
+				nextDiffuse = new SampleCount();
+			return nextDiffuse;
+		}
+		SampleCount* getCreateNextGlossy()
+		{
+			if(!nextGlossy)
+				nextGlossy = new SampleCount();
+			return nextGlossy;
+		}
+		SampleCount* getCreateNextRefraction()
+		{
+			if(!nextRefraction)
+				nextRefraction = new SampleCount();
+			return nextRefraction;
+		}
+
+
+		int numLightSamples;
+		int numDiffuseSamples;
+		int numGlossySamples;
+		int numRefractionSamples;
+
+		SampleCount* nextDiffuse;
+		SampleCount* nextGlossy;
+		SampleCount* nextRefraction;
+	};
+	SampleCount *g_sampleCount;
+
+
+	SampleCount* getSampleCount( const std::string path )
+	{
+		if(path.empty())
+			return 0;
+
+		if(!g_sampleCount)
+			g_sampleCount = new SampleCount();
+
+		SampleCount* current = g_sampleCount;
+		auto it = path.begin();
+		while( it != path.end() )
+		{
+			auto c = *it;
+
+			if(c == 'C')
+			{
+				// do nothing
+			}else
+			if(c == 'D')
+				current = current->getCreateNextDiffuse();
+			else
+			if(c == 'G')
+				current = current->getCreateNextGlossy();
+			else
+			if(c == 'R')
+				current = current->getCreateNextRefraction();
+			++it;
+		}
+
+		return current;
+	}
+
+
+	DistrMIPathTracer(const Properties &props)
+		: MonteCarloIntegrator(props),
+		g_sampleCount(0)
+	{
+		std::string samples = props.getString("samples", "");
+
+		std::vector<std::string> tuples;
+		boost::split(tuples, samples, boost::is_any_of(" "));
+
+		for(auto tuple:tuples)
+		{
+			bool fail = false;
+
+			if(tuple.empty())
+				continue;
+		///*
+			std::vector<std::string> tupleSplit;
+			boost::split(tupleSplit, tuple, boost::is_any_of("="));
+			if(tupleSplit.size()==2)
+			{
+				std::string path = tupleSplit[0];
+				std::string values = tupleSplit[1];
+
+				// get samplecount ref
+				SampleCount* sampleCount = getSampleCount(path);
+				if(sampleCount)
+				{
+					// get values ---
+					std::vector<std::string> valueStrings;
+					boost::split(valueStrings, values, boost::is_any_of(","));
+
+					if( valueStrings.size() == 4 )
+					{
+						sampleCount->numLightSamples = boost::lexical_cast<int>(valueStrings[0]);
+						sampleCount->numDiffuseSamples = boost::lexical_cast<int>(valueStrings[1]);
+						sampleCount->numGlossySamples = boost::lexical_cast<int>(valueStrings[2]);
+						sampleCount->numRefractionSamples = boost::lexical_cast<int>(valueStrings[3]);
+					}else
+					{
+						// wrong formatting
+						fail = true;
+					}
+				}else
+				{
+					// wrong formatting
+					fail = true;
+				}
+			}else
+			{
+				// wrong formatting
+				fail = true;
+				Log(EWarn, tuple.c_str());
+			}
+
+			if(fail)
+			{
+				Log(EError, "failed parsing samples string");
+			}
+			//*/
+		}
+
+
+		// samples is a regular expression which specifies the amount of samples for different
+		// dephts and light transports...
+		// example: C={1,1,1,1} CD={0,1,0,0}
+		// ->this will give only one sample to diffuse-diffuse bounces and no samples to diffuse-light, diffuse-glossy etc.
 		
+		//g_sampleCount.numLightSamples = props.getInteger("lightsamples", 1);
+		//g_sampleCount.numDiffuseSamples = props.getInteger("diffusesamples", 1);
+		//g_sampleCount.numGlossySamples = props.getInteger("glossysamples", 1);
+		//g_sampleCount.numRefractionSamples = props.getInteger("refractionsamples", 1);
 	}
 
 	/// Unserialize from a binary data stream
-	PracticalMIPathTracer(Stream *stream, InstanceManager *manager)
+	DistrMIPathTracer(Stream *stream, InstanceManager *manager)
 		: MonteCarloIntegrator(stream, manager) { }
 
 	virtual Spectrum Li(const RayDifferential &ray,
@@ -48,18 +192,26 @@ public:
 		return Li(ray, rRec, 0);
 	}
 
-
 	Spectrum Li(const RayDifferential &r, RadianceQueryRecord &rRec, RenderLogger* logger) const
 	{
+		//return Li_distr(r, rRec, logger, &g_sampleCount);
+		return Li_distr(r, rRec, logger, false, g_sampleCount);
+	}
+
+	Spectrum Li_distr(const RayDifferential &r, RadianceQueryRecord &rRec, bool scattered_, RenderLogger* logger, const SampleCount* sampleCount ) const
+	{
+		if(!sampleCount)
+			return Li_path( r, rRec, scattered_, logger );
+
 		// Some aliases and local variables
 		const Scene *scene = rRec.scene;
 		Intersection &its = rRec.its;
 		RayDifferential ray(r);
 		Spectrum Li(0.0f);
-		bool scattered = false;
+		bool scattered = scattered_;
 
-		if(logger)
-			logger->newPath(ray);
+		//if(logger)
+		//	logger->newPath(ray);
 
 		// Perform the first ray intersection (or ignore if the intersection has already been provided).
 		rRec.rayIntersect(ray);
@@ -69,7 +221,8 @@ public:
 		Float eta = 1.0f;
 
 
-		if (!its.isValid()) {
+		if (!its.isValid())
+		{
 			// If no intersection could be found, potentially return
 			// radiance from a environment luminaire if it exists
 			if ((rRec.type & RadianceQueryRecord::EEmittedRadiance) 
@@ -78,12 +231,12 @@ public:
 			return Li;
 		}
 			
-		if(logger)
-		{
-			logger->pathEvent( its.p );
-			logger->pathEventSurfaceNormal(its.shFrame.n);
-			logger->pathEventMesh( its.shape );
-		}
+		//if(logger)
+		//{
+		//	logger->pathEvent( its.p );
+		//	logger->pathEventSurfaceNormal(its.shFrame.n);
+		//	logger->pathEventMesh( its.shape );
+		//}
 
 		const BSDF *bsdf = its.getBSDF(ray);
 
@@ -118,7 +271,7 @@ public:
 		if (rRec.type & RadianceQueryRecord::EDirectSurfaceRadiance &&
 			(bsdf->getType() & BSDF::ESmooth))
 		{
-			int numSamples = rRec.depth == 1 ? m_lightSamples : 1;
+			int numSamples = sampleCount->numLightSamples;
 
 			for(int i=0;i<numSamples;++i)
 			{
@@ -160,7 +313,7 @@ public:
 		// ====================================================================
 		{
 			// Sample BSDF * cos(theta)
-			int numSamples = rRec.depth == 1 ? m_lightSamples : 1;
+			int numSamples = sampleCount->numLightSamples;
 			for(int i=0;i<numSamples;++i)
 			{
 				Intersection its_bsdf = its;
@@ -228,7 +381,7 @@ public:
 		if(its.shape->getBSDF()->getType() & BSDF::EDiffuse)
 		{
 			// Sample BSDF * cos(theta)
-			int numSamples = rRec.depth == 1 ? m_diffuseSamples : 1;
+			int numSamples = sampleCount->numDiffuseSamples;
 			RadianceQueryRecord indirectDiffuseRec;
 			for(int i=0;i<numSamples;++i)
 			{
@@ -246,7 +399,7 @@ public:
 				const Vector wo = diffuse_its.toWorld(bRec.wo);
 				RayDifferential indirectDiffuseRay(diffuse_its.p, wo, ray.time);
 
-				Spectrum indirectDiffuseSample = throughput * bsdfWeight * Li_path(indirectDiffuseRay, indirectDiffuseRec, 0);
+				Spectrum indirectDiffuseSample = throughput * bsdfWeight * Li_distr(indirectDiffuseRay, indirectDiffuseRec, true, 0, sampleCount->nextDiffuse);
 				Li += indirectDiffuseSample/float(numSamples);
 			}
 		}
@@ -254,7 +407,7 @@ public:
 		if(its.shape->getBSDF()->getType() & BSDF::EGlossyReflection)
 		{
 			// Sample BSDF * cos(theta)
-			int numSamples = rRec.depth == 1 ? m_glossySamples : 1;
+			int numSamples = sampleCount->numGlossySamples;
 			RadianceQueryRecord indirectGlossyRec;
 			for(int i=0;i<numSamples;++i)
 			{
@@ -272,7 +425,7 @@ public:
 				const Vector wo = glossy_its.toWorld(bRec.wo);
 				RayDifferential indirectGlossyRay(glossy_its.p, wo, ray.time);
 
-				Spectrum indirectGlossySample = throughput * bsdfWeight * Li_path(indirectGlossyRay, indirectGlossyRec, 0);
+				Spectrum indirectGlossySample = throughput * bsdfWeight * Li_distr(indirectGlossyRay, indirectGlossyRec, true, 0, sampleCount->nextGlossy);
 				Li += indirectGlossySample/float(numSamples);
 			}
 		}
@@ -280,7 +433,7 @@ public:
 		if(its.shape->getBSDF()->getType() & BSDF::EGlossyTransmission)
 		{
 			// Sample BSDF * cos(theta)
-			int numSamples = rRec.depth == 1 ? m_refractionSamples : 1;
+			int numSamples = sampleCount->numRefractionSamples;
 			RadianceQueryRecord indirectGlossyRec;
 			for(int i=0;i<numSamples;++i)
 			{
@@ -298,15 +451,15 @@ public:
 				const Vector wo = glossy_its.toWorld(bRec.wo);
 				RayDifferential indirectGlossyRay(glossy_its.p, wo, ray.time);
 
-				Spectrum indirectGlossySample = throughput * bsdfWeight * Li_path(indirectGlossyRay, indirectGlossyRec, 0);
+				Spectrum indirectGlossySample = throughput * bsdfWeight * Li_distr(indirectGlossyRay, indirectGlossyRec, true, 0, sampleCount->nextRefraction);
 				Li += indirectGlossySample/float(numSamples);
 			}
 		}
 
 		//*/
 
-		if(logger)
-			logger->finalizePath();
+		//if(logger)
+		//	logger->finalizePath();
 
 		// Store statistics
 		avgPathLength.incrementBase();
@@ -315,14 +468,14 @@ public:
 		return Li;
 	}
 
-	Spectrum Li_path(const RayDifferential &r, RadianceQueryRecord &rRec, RenderLogger* logger) const
+	Spectrum Li_path(const RayDifferential &r, RadianceQueryRecord &rRec, bool scattered_, RenderLogger* logger) const
 	{
 		// Some aliases and local variables
 		const Scene *scene = rRec.scene;
 		Intersection &its = rRec.its;
 		RayDifferential ray(r);
 		Spectrum Li(0.0f);
-		bool scattered = true;
+		bool scattered = scattered_;
 
 
 		// Perform the first ray intersection (or ignore if the intersection has already been provided).
@@ -540,16 +693,12 @@ public:
 	}
 
 
-	int m_lightSamples;
-	int m_diffuseSamples;
-	int m_glossySamples;
-	int m_refractionSamples;
-	bool m_directLight;
+
 
 	MTS_DECLARE_CLASS()
 };
 
-MTS_IMPLEMENT_CLASS_S(PracticalMIPathTracer, false, MonteCarloIntegrator)
-MTS_EXPORT_PLUGIN(PracticalMIPathTracer, "practical MI path tracer");
+MTS_IMPLEMENT_CLASS_S(DistrMIPathTracer, false, MonteCarloIntegrator)
+MTS_EXPORT_PLUGIN(DistrMIPathTracer, "Distr MI path tracer");
 } // namespace mitsuba
 

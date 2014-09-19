@@ -142,14 +142,17 @@ public:
 		{
 		//std::cout <<"ray.o: " << ray.o.x << " " << ray.o.y << " " << ray.o.z << std::endl;
 		//std::cout <<"ray.d: " << ray.d.x << " " << ray.d.y << " " << ray.d.z << std::endl;
+			//std::cout << "test\n";
 		}
-		rRec.rayIntersect(ray);
+		bool check = rRec.rayIntersect(ray);
 		ray.mint = Epsilon;
 
 		Spectrum throughput(1.0f); // this is throughput over pdf
 		Float eta = 1.0f;
 
-		while (rRec.depth <= m_maxDepth || m_maxDepth < 0) {
+		while (rRec.depth <= m_maxDepth || m_maxDepth < 0)
+		{
+
 			//if(logger)
 			//	std::cout << "test1\n";
 			if (!its.isValid()) {
@@ -162,6 +165,7 @@ public:
 					Li += throughput * scene->evalEnvironment(ray);
 				break;
 			}
+
 			if(logger)
 			{
 				//std::cout << "its.p: " << its.p.x << " " << its.p.y << " " << its.p.z << std::endl;
@@ -171,6 +175,7 @@ public:
 			if(logger)
 			{
 				logger->pathEvent( its.p );
+				logger->pathEventIntersection(its);
 				logger->pathEventSurfaceNormal(its.shFrame.n);
 				logger->pathEventMesh( its.shape );
 			}
@@ -184,10 +189,12 @@ public:
 				Li += throughput * its.Le(-ray.d);
 
 
+
 			/* Include radiance from a subsurface scattering model if requested */
 			if (its.hasSubsurface() && (rRec.type & RadianceQueryRecord::ESubsurfaceRadiance))
 				//if(rRec.depth>1)
 				Li += throughput * its.LoSub(scene, rRec.sampler, -ray.d, rRec.depth);
+
 
 
 			if ((rRec.depth >= m_maxDepth && m_maxDepth > 0)
@@ -211,6 +218,7 @@ public:
 			/* Estimate the direct illumination if this is requested */
 			DirectSamplingRecord dRec(its);
 			//std::cout << "test6\n";
+			///*
 			if (rRec.type & RadianceQueryRecord::EDirectSurfaceRadiance &&
 				(bsdf->getType() & BSDF::ESmooth)) {
 				Spectrum value = scene->sampleEmitterDirect(dRec, rRec.nextSample2D());
@@ -218,22 +226,22 @@ public:
 				{
 					const Emitter *emitter = static_cast<const Emitter *>(dRec.object);
 
-					/* Allocate a record for querying the BSDF */
+					// Allocate a record for querying the BSDF
 					BSDFSamplingRecord bRec(its, its.toLocal(dRec.d), ERadiance);
 
-					/* Evaluate BSDF * cos(theta) */
+					// Evaluate BSDF * cos(theta)
 					const Spectrum bsdfVal = bsdf->eval(bRec);
 
-					/* Prevent light leaks due to the use of shading normals */
+					// Prevent light leaks due to the use of shading normals
 					if (!bsdfVal.isZero() && (!m_strictNormals
 							|| dot(its.geoFrame.n, dRec.d) * Frame::cosTheta(bRec.wo) > 0)) {
 
-						/* Calculate prob. of having generated that direction
-						   using BSDF sampling */
+						// Calculate prob. of having generated that direction
+						//   using BSDF sampling
 						Float bsdfPdf = (emitter->isOnSurface() && dRec.measure == ESolidAngle)
 							? bsdf->pdf(bRec) : 0;
 
-						/* Weight using the power heuristic */
+						// Weight using the power heuristic
 						Float weight = miWeight(dRec.pdf, bsdfPdf);
 						Spectrum lightSample = value * bsdfVal * weight;
 						//if(rRec.depth>1)
@@ -247,6 +255,7 @@ public:
 					}
 				}
 			}
+			//*/
 
 
 			/* ==================================================================== */
@@ -257,12 +266,13 @@ public:
 			Float bsdfPdf;
 			BSDFSamplingRecord bRec(its, rRec.sampler, ERadiance);
 			Spectrum bsdfWeight = bsdf->sample(bRec, bsdfPdf, rRec.nextSample2D());
+
 			if (bsdfWeight.isZero())
 				break;
 
 			if(logger)
 			{
-				logger->pathEventBSDF( bsdfWeight*bsdfPdf, bsdfPdf, bRec.sampledType );
+				logger->pathEventBSDF( bsdfWeight*bsdfPdf, its.toWorld(bRec.wo), bsdfPdf, bRec.sampledType );
 			}
 
 			scattered |= bRec.sampledType != BSDF::ENull;
@@ -316,6 +326,7 @@ public:
 				const Float lumPdf = (!(bRec.sampledType & BSDF::EDelta)) ?
 					scene->pdfEmitterDirect(dRec) : 0;
 				Spectrum bsdfSample = throughput * value * miWeight(bsdfPdf, lumPdf);
+				//Spectrum bsdfSample = value;
 				//if(rRec.depth>1)
 				Li += bsdfSample;
 
